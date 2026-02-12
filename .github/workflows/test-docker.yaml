@@ -1,0 +1,11 @@
+---
+name: Test Docker capabilities in GitHub Hosted Runners
+on:
+  workflow_dispatch:
+jobs:
+  test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test start hellow-world:latest image with --rm flag
+        run: |
+          docker run --rm hello-world:latest
