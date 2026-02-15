@@ -16,11 +16,7 @@ on:
         description: 'Path to SQL script in the repository (e.g., db/migrations)'
         required: true
         type: string
-        default: 'db-migrate-script/demo.sql'
-      db_host:
-        description: 'Database host'
-        required: true
-        type: string
+        default: 'db-migrate-script'
       db_port:
         description: 'Database port'
         required: true
@@ -30,6 +26,7 @@ on:
         description: 'Database name'
         required: true
         type: string
+        default: 'demo'
 
 jobs:
   checkout-sql-script:
@@ -114,8 +111,8 @@ jobs:
       - name: Migrate Database
         env:
           FLYWAY_DRIVER: org.postgresql.Driver
-          FLYWAY_URL: jdbc:postgresql://${{ inputs.db_host }}:${{ inputs.db_port }}/${{ inputs.db_name }}
-          FLYWAY_USER: ${{ secrets.db_user }}
+          FLYWAY_URL: jdbc:postgresql://${{ secrets.DB_HOST }}:${{ inputs.db_port }}/${{ inputs.db_name }}
+          FLYWAY_USER: ${{ secrets.DB_USER }}
           FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD }}
           FLYWAY_LOCATIONS: filesystem:./sql-migrations
           FLYWAY_BASELINEONMIGRATE: true
@@ -127,8 +124,8 @@ jobs:
       - name: Validate Database Migration
         env:
           FLYWAY_DRIVER: org.postgresql.Driver
-          FLYWAY_URL: jdbc:postgresql://${{ inputs.db_host }}:${{ inputs.db_port }}/${{ inputs.db_name }}
-          FLYWAY_USER: ${{ secrets.db_user }}
+          FLYWAY_URL: jdbc:postgresql://${{ secrets.DB_HOST }}:${{ inputs.db_port }}/${{ inputs.db_name }}
+          FLYWAY_USER: ${{ secrets.DB_USER }}
           FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD }}
           FLYWAY_LOCATIONS: filesystem:./sql-migrations
         run: |
