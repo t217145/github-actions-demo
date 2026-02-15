@@ -131,10 +131,14 @@ jobs:
         run: |
           echo "Validating migration results..."
           flyway validate
-          flyway info
 
       - name: Migration Summary
         if: success()
+        env:
+          FLYWAY_DRIVER: org.postgresql.Driver
+          FLYWAY_URL: jdbc:postgresql://${{ secrets.DB_HOST }}:${{ inputs.db_port }}/${{ inputs.db_name }}
+          FLYWAY_USER: ${{ secrets.DB_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           echo "✓ Database migration completed successfully"
           echo "Listing all applied migrations:"
