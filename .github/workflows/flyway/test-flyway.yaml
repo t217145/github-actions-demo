@@ -1,0 +1,144 @@
+name: Simple Flyway workflow to migrate DB by SQL Script
+on:
+  workflow_dispatch:
+    inputs:
+      repo_name:
+        description: 'Repository name (from same GitHub Org)'
+        required: true
+        type: string
+        default: 'github-actions-demo'
+      branch_name:
+        description: 'Branch name to checkout'
+        required: true
+        type: string
+        default: 'main'
+      sql_path:
+        description: 'Path to SQL script in the repository (e.g., db/migrations)'
+        required: true
+        type: string
+        default: 'db-migrate-script/demo.sql'
+      db_host:
+        description: 'Database host'
+        required: true
+        type: string
+      db_port:
+        description: 'Database port'
+        required: true
+        type: string
+        default: '5432'
+      db_name:
+        description: 'Database name'
+        required: true
+        type: string
+
+jobs:
+  checkout-sql-script:
+    runs-on: ubuntu-latest
+    outputs:
+      sql_files_found: ${{ steps.check-sql.outputs.files_found }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Checkout SQL script from target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ inputs.repo_name }}
+          ref: ${{ inputs.branch_name }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check SQL files existence
+        id: check-sql
+        run: |
+          if [ -d "${{ inputs.sql_path }}" ]; then
+            echo "files_found=true" >> $GITHUB_OUTPUT
+            find "${{ inputs.sql_path }}" -type f \( -name "*.sql" \) | head -20
+          else
+            echo "files_found=false" >> $GITHUB_OUTPUT
+            echo "Warning: SQL path not found: ${{ inputs.sql_path }}"
+          fi
+
+      - name: Validate SQL script
+        if: steps.check-sql.outputs.files_found == 'true'
+        run: |
+          echo "Validating SQL scripts..."
+          for sql_file in $(find "${{ inputs.sql_path }}" -type f -name "*.sql"); do
+            echo "Checking file: $sql_file"
+            # Basic validation: check if file is not empty
+            if [ ! -s "$sql_file" ]; then
+              echo "Error: SQL file is empty: $sql_file"
+              exit 1
+            fi
+            # Validate SQL syntax (basic check for common issues)
+            if ! grep -q "^[[:space:]]*[A-Z]" "$sql_file"; then
+              echo "Warning: File may not contain valid SQL: $sql_file"
+            fi
+            echo "✓ File validated: $sql_file"
+          done
+
+      - name: Upload SQL script as artifact for audit purpose
+        if: steps.check-sql.outputs.files_found == 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: sql-scripts
+          path: ${{ inputs.sql_path }}
+          retention-days: 30
+
+  migrate-db-by-flyway:
+    needs: checkout-sql-script
+    runs-on: ubuntu-latest
+    if: needs.checkout-sql-script.outputs.sql_files_found == 'true'
+    steps:
+      - name: Download SQL script artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: sql-scripts
+          path: ./sql-migrations
+
+      - name: Setup Flyway
+        uses: red-gate/setup-flyway@v3
+        with:
+          version: latest
+          edition: community
+          i-agree-to-the-eula: true
+
+      - name: Verify Flyway installation
+        run: flyway -v
+
+      - name: Migrate Database
+        env:
+          FLYWAY_DRIVER: org.postgresql.Driver
+          FLYWAY_URL: jdbc:postgresql://${{ inputs.db_host }}:${{ inputs.db_port }}/${{ inputs.db_name }}
+          FLYWAY_USER: ${{ secrets.db_user }}
+          FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          FLYWAY_LOCATIONS: filesystem:./sql-migrations
+          FLYWAY_BASELINEONMIGRATE: true
+          FLYWAY_VALIDATEONMIGRATE: true
+        run: |
+          echo "Starting database migration with Flyway..."
+          flyway migrate
+
+      - name: Validate Database Migration
+        env:
+          FLYWAY_DRIVER: org.postgresql.Driver
+          FLYWAY_URL: jdbc:postgresql://${{ inputs.db_host }}:${{ inputs.db_port }}/${{ inputs.db_name }}
+          FLYWAY_USER: ${{ secrets.db_user }}
+          FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          FLYWAY_LOCATIONS: filesystem:./sql-migrations
+        run: |
+          echo "Validating migration results..."
+          flyway validate
+          flyway info
+
+      - name: Migration Summary
+        if: success()
+        run: |
+          echo "✓ Database migration completed successfully"
+          echo "Listing all applied migrations:"
+          flyway info
