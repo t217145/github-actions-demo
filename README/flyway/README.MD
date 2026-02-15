@@ -209,6 +209,9 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
    - Database port: `5432`
    - Database name: `demo`
 5. Click **"Run workflow"** to execute
+6. **Verification:** Upon successful migration completion, the database tables are created and populated with initial data.
+
+   ![Database migration result](./db.png)
 ---
 
 ## Troubleshooting
